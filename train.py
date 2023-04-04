@@ -10,13 +10,13 @@ log = "--log" in argv
 logger = Logger("grokking" if grok else "comprehension") if log else None
 
 # Hyperparameters
-num_epochs = 4000
+num_epochs = 10000
 learning_rate = 3e-2
 weight_decay = 3e-2 if grok else 3
 
 # Data - sum of two numbers mod 53
 P = 53
-train_frac = 0.8
+train_frac = 0.5
 X = torch.cartesian_prod(torch.arange(P), torch.arange(P))
 y = (X[:, 0] + X[:, 1]) % P
 shuffle = torch.randperm(len(X))
