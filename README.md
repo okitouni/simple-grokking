@@ -1,7 +1,7 @@
 Minimal setup to observe the grokking phenomenon on an algorithmic task. 
 ## Description
 This is a minimal setup to observe the grokking phenomenon on an algorithmic task.
-The task is modular addition. The model is a simple 2-layer MLP which takes in two learnable embeddings of dimension `hidden_dim=128` concatenated together. Eeach embedding representes an integer and the target is their sum modulo 53.
+The task is modular addition. The model is a simple 2-layer MLP that takes in two learnable embeddings of dimension `hidden_dim=128` concatenated together. Each embedding representes an integer and the target is their sum modulo 53.
 
 ## Run
 Run `python train.py --grok` to see these training curves:
@@ -10,3 +10,5 @@ Run `python train.py --grok` to see these training curves:
 
 and `python train.py` for a normal run:
 ![normal](./metrics_comprehension.jpg)
+
+The only difference between these two runs is that weight decay is set to 5 (!) in the non-grokking (comprehension) run and 0.03 in the grokking run. For more details on the effect of hyperparameters on the grokking phenomenon, see [this paper: Towards understanding grokking](https://arxiv.org/abs/2205.10343).
