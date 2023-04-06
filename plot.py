@@ -1,6 +1,5 @@
 from matplotlib import pyplot as plt
 from matplotlib.animation import FuncAnimation
-from sklearn.decomposition import PCA
 import numpy as np
 import torch
 import os
@@ -133,5 +132,6 @@ if __name__ == "__main__":
     for log in logs:
         log_dir = os.path.join("log", log)
         if "--anim" in argv:
+            from sklearn.decomposition import PCA
             animate_embedddings(log_dir)
         plot_metrics(log_dir)
