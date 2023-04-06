@@ -129,9 +129,9 @@ if __name__ == "__main__":
     if not os.path.exists("log") or len(logs) == 0:
         print("No logs found. Run train.py first.")
         exit()
-
     for log in logs:
         log_dir = os.path.join("log", log)
         if "--anim" in argv:
             animate_embedddings(log_dir)
         plot_metrics(log_dir)
+        break

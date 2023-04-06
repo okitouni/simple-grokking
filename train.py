@@ -10,13 +10,13 @@ log = "--log" in argv
 logger = Logger("grokking" if grok else "comprehension") if log else None
 
 # Hyperparameters
-num_epochs = 10000
-learning_rate = 3e-2
-weight_decay = 3e-2 if grok else 3
+num_epochs = 1000
+learning_rate = 3e-3
+weight_decay = 10
 
 # Data - sum of two numbers mod 53
 P = 53
-train_frac = 0.5
+train_frac = 0.35
 X = torch.cartesian_prod(torch.arange(P), torch.arange(P))
 y = (X[:, 0] + X[:, 1]) % P
 shuffle = torch.randperm(len(X))
@@ -24,17 +24,37 @@ X, y = X[shuffle], y[shuffle]
 X_train, X_val = X[: int(train_frac * len(X))], X[int(train_frac * len(X)) :]
 y_train, y_val = y[: int(train_frac * len(y))], y[int(train_frac * len(y)) :]
 
+# Residual Block
+class ResidualBlock(nn.Module):
+    def __init__(self, d_model, hidden_dim=256):
+        super(ResidualBlock, self).__init__()
+        self.nonlinear = torch.nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.ReLU(),
+            nn.Linear(d_model, d_model),
+            nn.ReLU(),
+        )
+        self.norm = nn.LayerNorm(d_model)
+
+    def forward(self, x):
+        # return self.norm(x + self.nonlinear(x))
+        return self.nonlinear(x) + x
+
 # Model
 class Model(nn.Module):
     def __init__(self, hidden_dim=256):
         super(Model, self).__init__()
         self.embedding = nn.Embedding(P, hidden_dim)
-        self.fc1 = nn.Linear(2 * hidden_dim, hidden_dim)
+        self.nonlinear = torch.nn.Sequential(
+            nn.Linear(2 * hidden_dim, hidden_dim),
+            nn.ReLU(),
+            *[ResidualBlock(hidden_dim, 4*hidden_dim) for _ in range(3)],
+        )
         self.readout = nn.Linear(hidden_dim, P)
 
     def forward(self, x):
         x = self.embedding(x).flatten(start_dim=1)
-        x = torch.relu(self.fc1(x))
+        x = self.nonlinear(x)
         x = self.readout(x)
         return x
 
