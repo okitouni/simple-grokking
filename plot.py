@@ -33,6 +33,12 @@ def animate_embedddings(log_dir):
     # Load Data
     print(f"Loading {log_dir}...")
     epochs, train_loss, train_acc, val_loss, val_acc = _get_metrics(log_dir, skip=1)
+    epochs = epochs[::20]
+    train_loss = train_loss[::20]
+    train_acc = train_acc[::20]
+    val_loss = val_loss[::20]
+    val_acc = val_acc[::20]
+    
 
     # PCA
     all_embeddings = []
@@ -125,7 +131,12 @@ def plot_metrics(log_dir):
     print(f"Saved {savefile}\n")
 
 if __name__ == "__main__":
-    logs = os.listdir("log")
+    if "NAME" in os.environ:
+        logs = [os.environ["NAME"]]
+    # if "--name" in argv:
+    #     logs = [argv[argv.index("--name") + 1]]
+    else:
+        logs = os.listdir("log")
     if not os.path.exists("log") or len(logs) == 0:
         print("No logs found. Run train.py first.")
         exit()
@@ -134,4 +145,3 @@ if __name__ == "__main__":
         if "--anim" in argv:
             animate_embedddings(log_dir)
         plot_metrics(log_dir)
-        break
