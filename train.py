@@ -5,7 +5,6 @@ import tqdm
 from log import Logger
 from sys import argv
 import os
-from typing import Optional, Union, Iterable
 
 torch.manual_seed(2)
 log = "--log" in argv
@@ -13,17 +12,22 @@ name = os.environ["NAME"] if "NAME" in os.environ else "run"
 logger = Logger(name) if log else None
 
 # Hyperparameters
-num_epochs = 2000
+num_epochs = 50000
 learning_rate = 2e-2
-weight_decay = 0.1
+weight_decay = 0.5
 
 # Data - sum of two numbers mod 53
-Ps = torch.tensor([23, 24, 53])
+Ps = torch.tensor([23, 29, 31, 37, 41, 43, 47, 53])
 P = max(Ps)
 train_frac = 0.3
 
-X = torch.cartesian_prod(torch.arange(P), torch.arange(P), torch.arange(P, P+len(Ps)))
-y = (X[:, 0] + X[:, 1]) % Ps[X[:, 2] - P]
+X = torch.cartesian_prod(torch.arange(P), torch.arange(P), torch.arange(P, P + len(Ps)))
+y = (X[:, 0] + X[:, 1]) 
+print("original data size: ", len(y), end=" ")
+keep = y >= max(Ps)
+X, y = X[keep], y[keep]
+y = y % Ps[X[:, 2] - P]
+print("after filtering: ", len(y), "frac: ", f"{len(y) / len(keep):.2f}")
 shuffle = torch.randperm(len(X))
 X, y = X[shuffle], y[shuffle]
 X_train, X_val = X[: int(train_frac * len(X))], X[int(train_frac * len(X)) :]
@@ -37,20 +41,22 @@ class ResidualBlock(nn.Module):
             nn.Linear(d_model, d_model),
             nn.ReLU(),
             nn.Linear(d_model, d_model),
-            nn.ReLU())
+            nn.ReLU(),
+        )
 
     def forward(self, x):
         return self.nonlinear(x) + x
+
 
 # Model
 class Model(nn.Module):
     def __init__(self, hidden_dim=256):
         super(Model, self).__init__()
-        self.embedding = nn.Embedding(P + len(Ps) , hidden_dim)
+        self.embedding = nn.Embedding(P + len(Ps), hidden_dim)
         self.nonlinear = torch.nn.Sequential(
             nn.Linear(3 * hidden_dim, hidden_dim),
             nn.ReLU(),
-            *[ResidualBlock(hidden_dim) for _ in range(1)],
+            *[ResidualBlock(hidden_dim) for _ in range(0)],
         )
         self.readout = nn.Linear(hidden_dim, P)
 
@@ -95,7 +101,7 @@ if __name__ == "__main__":
 
         msg = f"{loss:10.2f}, {train_acc:>3.0f} | {val_loss:>8.2f}, {val_acc:>4.0f}"
         pbar.set_description(msg)
-        
+
         if log:
             logger.log(
                 model=model,
