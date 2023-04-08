@@ -10,17 +10,12 @@ from sys import argv
 plt.style.use("mplstyle.mplstyle")
 
 
-def _get_metrics(log_dir, skip=1):
+def _get_metrics(log_dir):
     # Load Data
     metrics = np.loadtxt(
         os.path.join(log_dir, "metrics.csv"), delimiter=",", skiprows=1
     )
-    epochs = metrics[::skip, 0].astype(int)
-    train_loss = metrics[::skip, 1]
-    train_acc = metrics[::skip, 2]
-    val_loss = metrics[::skip, 3]
-    val_acc = metrics[::skip, 4]
-    return epochs, train_loss, train_acc, val_loss, val_acc
+    return metrics.T
 
 
 def _load_embeddings(log_dir, epoch):
@@ -32,7 +27,7 @@ def _load_embeddings(log_dir, epoch):
 def animate_embedddings(log_dir):
     # Load Data
     print(f"Loading {log_dir}...")
-    epochs, train_loss, train_acc, val_loss, val_acc = _get_metrics(log_dir, skip=1)
+    epochs, train_loss, train_acc, val_loss, val_acc = _get_metrics(log_dir)
     epochs = epochs[::20]
     train_loss = train_loss[::20]
     train_acc = train_acc[::20]
