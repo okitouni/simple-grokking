@@ -44,13 +44,13 @@ def run(use_functions, functions=functions_):
     SimpleBlock = lambda i, o: nn.Sequential(nn.Linear(i, o), nn.ReLU())
 
     # Hyperparameters
-    num_epochs = 1000
-    learning_rate = 1e-3
-    weight_decay = 1e-5
+    num_epochs = 10000
+    learning_rate = 1e-4
+    weight_decay = 1e-2
 
     # Data
     P = 100
-    train_frac = 0.01
+    train_frac = 0.05
 
     X = torch.cartesian_prod(
         torch.arange(P), torch.arange(P), torch.arange(len(functions))
@@ -69,7 +69,7 @@ def run(use_functions, functions=functions_):
 
     # Model
     class Model(nn.Module):
-        def __init__(self, hidden_dim=256, num_layers=1):
+        def __init__(self, hidden_dim=32, num_layers=1):
             super(Model, self).__init__()
             self.embedding = nn.Embedding(P + len(functions), hidden_dim)
             self.nonlinear = torch.nn.Sequential(
@@ -77,24 +77,28 @@ def run(use_functions, functions=functions_):
                 *[SimpleBlock(hidden_dim, hidden_dim) for _ in range(num_layers)]
                 # *[ResidualBlock(hidden_dim) for _ in range(num_layers)],
             )
-            self.readout = nn.Linear(hidden_dim, 1)
+            self.readout = nn.Linear(hidden_dim, len(functions))
 
         def forward(self, x):
+            task = x[:, -1] - P
             x = self.embedding(x).flatten(start_dim=1)
             x = self.nonlinear(x)
             x = self.readout(x)
-            return x
+            x = x[torch.arange(len(x)), task]
+            return x.view(-1, 1)
 
     model = Model()
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=learning_rate, weight_decay=weight_decay
     )
     criterion = nn.MSELoss()
-    def loss_by_function(y_pred, y):
+    def loss_by_function(y_pred, y, x):
         losses = [-1] * len(functions_)
         write_idx = [ i for i, use in enumerate(use_functions) if use]
         for i, write_idx in enumerate(write_idx):
-            losses[write_idx] = criterion(y_pred[i::len(functions)], y[i::len(functions)])
+            y_pred_ = y_pred[x[:, 2] == i + P]
+            y_ = y[x[:, 2] == i + P]
+            losses[write_idx] = criterion(y_pred_, y_)
         return losses
     # Train
 
@@ -106,27 +110,27 @@ def run(use_functions, functions=functions_):
         print(title)
         pbar = tqdm.trange(num_epochs, leave=True, position=0)
         for epoch in pbar:
-            for x, y in loader:
-                optimizer.zero_grad()
-                y_pred = model(x)
-                loss = criterion(y_pred, y)
-                loss.backward()
-                optimizer.step()
-            with torch.no_grad():
-                y_pred = model(X_train)
-                loss = criterion(y_pred, y_train)
-                train_losses = loss_by_function(y_pred, y_train)
-            # optimizer.zero_grad()
-            # y_pred = model(X_train)
-            # loss = criterion(y_pred, y_train)
-            # loss.backward()
-            # optimizer.step()
-            # train_losses = loss_by_function(y_pred, y_train)
+            # for x, y in loader:
+            #     optimizer.zero_grad()
+            #     y_pred = model(x)
+            #     loss = criterion(y_pred, y)
+            #     loss.backward()
+            #     optimizer.step()
+            # with torch.no_grad():
+            #     y_pred = model(X_train)
+            #     loss = criterion(y_pred, y_train)
+            #     train_losses = loss_by_function(y_pred, y_train)
+            optimizer.zero_grad()
+            y_pred = model(X_train)
+            loss = criterion(y_pred, y_train)
+            loss.backward()
+            optimizer.step()
+            train_losses = loss_by_function(y_pred, y_train, X_train)
 
             with torch.no_grad():
                 y_pred = model(X_val)
                 val_loss = criterion(y_pred, y_val)
-                val_losses = loss_by_function(y_pred, y_val)
+                val_losses = loss_by_function(y_pred, y_val, X_val)
 
             msg = f"{loss:10.2e} | {val_loss:>8.2e}"
             msg += " | " + " | ".join([f"{l:8.2e}" for l in train_losses + val_losses])
