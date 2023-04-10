@@ -1,2 +1,4 @@
-__pycache__
-log/*
+logs/
+models/
+unstaged_plots/
+__pycache__/
