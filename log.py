@@ -7,7 +7,7 @@ class Logger:
     def __init__(self, name, metrics=["epoch", "train_loss", "train_acc", "val_loss", "val_acc"]):
         self.metrics = metrics
 
-        self.root = os.path.join("log", name)
+        self.root = os.path.join("logs", name)
         models = os.path.join(self.root, "models")
         os.makedirs(self.root, exist_ok=True)
         if os.path.exists(models): shutil.rmtree(models)
