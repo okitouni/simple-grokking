@@ -43,6 +43,7 @@ weight_decay = 1e-1
 
 train_frac = 0.1
 batch_size = 4
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 data = prepare_nuclear_data(args, scaler=MinMaxScaler())
 tasks = list(args.TARGETS_REGRESSION.keys())
@@ -66,8 +67,8 @@ X_val, y_val = (
     X[shuffle[train_idx: train_idx * 2]],
     y[shuffle[train_idx: train_idx * 2]],
 )
-# inverse_transform = data.feature_transformer.inverse_transform
-
+X_train, y_train = X_train.to(device), y_train.to(device)
+X_val, y_val = X_val.to(device), y_val.to(device)
 
 # %%
 # --------------------------------------------- MODEL
@@ -121,7 +122,7 @@ if __name__ == "__main__":
     loader = DataLoader(
         TensorDataset(X_train, y_train), batch_size=batch_size, shuffle=True
     )
-    model = Model(num_tasks=num_tasks)
+    model = Model(num_tasks=num_tasks); model.to(device)
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=learning_rate, weight_decay=weight_decay
     )
