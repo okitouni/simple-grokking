@@ -206,6 +206,11 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False, sca
     returns (Data): namedtuple of X, y, vocab_size, output_map, quantile_transformer
     """
     targets = get_targets(get_nuclear_data(recreate=recreate))
+    targets["sum_zn"] = targets.z + targets.n
+    targets["diff_zn"] = targets.z - targets.n
+    targets["n_mod_2"] = targets.n % 2
+    targets["z_mod_2"] = targets.z % 2
+    targets["sum_mod_2"] = targets.sum_zn % 2
 
     X = torch.tensor(targets[["z", "n"]].values).long()
 

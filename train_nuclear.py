@@ -3,7 +3,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 from data import prepare_nuclear_data, train_test_split
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler, StandardScaler, RobustScaler
 from argparse import Namespace
 from log import Logger
 import shutil, tqdm
@@ -14,50 +14,57 @@ args = Namespace(
     # {"stability": 1, "parity": 1, "spin": 1, "isospin": 1},
     {},
     TARGETS_REGRESSION=
-    # {
-    #     "z": 1,
-    #     "n": 1,
-    #     "binding_energy": 1,
-    #     "radius": 1,
-    # },
     {
         "z": 1,
         "n": 1,
         "binding_energy": 1,
         "radius": 1,
-        "half_life_sec": 1,
-        "abundance": 1,
-        "qa": 1,
-        "qbm": 1,
-        "qbm_n": 1,
-        "qec": 1,
-        "sn": 1,
-        "sp": 1,
+        "sum_zn": 1,
+        "diff_zn": 1,
+        "n_mod_2": 1,
+        "z_mod_2": 1,
+        "sum_mod_2": 1,
+    #     "half_life_sec": 1,
+    #     "abundance": 1,
+    #     "qa": 1,
+    #     "qbm": 1,
+    #     "qbm_n": 1,
+    #     "qec": 1,
+    #     "sn": 1,
+    #     "sp": 1,
     },
     DEV="cpu",
 )
+
+# Hyperparameters
+num_epochs = 3000
+learning_rate = 1e-4
+weight_decay = 1e-1
+
+train_frac = 0.1
+batch_size = 4
 
 data = prepare_nuclear_data(args, scaler=MinMaxScaler())
 tasks = list(args.TARGETS_REGRESSION.keys())
 num_tasks = len(args.TARGETS_REGRESSION)
 P = data.X.max() + 1
 X = torch.vstack(
-    [torch.cat((x, torch.tensor([i]))) for x in data.X for i in range(num_tasks)]
+    [torch.cat((x, torch.tensor([i]))) for x in data.X for i in range(P, P + num_tasks)]
 )
-X[:, -1] += P
 y = data.y.flatten()
 na_mask = torch.isnan(y)
 X = X[~na_mask]
 y = y[~na_mask].view(-1, 1)
-train_frac = 0.8
 shuffle = torch.randperm(len(X))
+train_idx = int(len(X) * train_frac)
+
 X_train, y_train = (
-    X[shuffle[: int(len(X) * train_frac)]],
-    y[shuffle[: int(len(X) * train_frac)]],
+    X[shuffle[: train_idx]],
+    y[shuffle[: train_idx]],
 )
 X_val, y_val = (
-    X[shuffle[int(len(X) * train_frac) :]],
-    y[shuffle[int(len(X) * train_frac) :]],
+    X[shuffle[train_idx: train_idx * 2]],
+    y[shuffle[train_idx: train_idx * 2]],
 )
 # inverse_transform = data.feature_transformer.inverse_transform
 
@@ -110,14 +117,9 @@ if __name__ == "__main__":
     if log:
         shutil.copy(__file__, logger.root)
 
-    # Hyperparameters
-    num_epochs = 3000
-    learning_rate = 1e-4
-    weight_decay = 1e-1
-
     # Data
     loader = DataLoader(
-        TensorDataset(X_train, y_train), batch_size=4, shuffle=True
+        TensorDataset(X_train, y_train), batch_size=batch_size, shuffle=True
     )
     model = Model(num_tasks=num_tasks)
     optimizer = torch.optim.AdamW(
