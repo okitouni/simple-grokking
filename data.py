@@ -138,7 +138,7 @@ def get_targets(df):
     # place all targets into targets an empty copy of df
     targets = df[["z", "n"]].copy()
     # binding energy per nucleon
-    targets["binding_energy"] = get_binding_energy_from(df)
+    targets["binding"] = get_binding_energy_from(df)
     # radius in fm
     targets["radius"] = get_radius_from(df)
     # half life in log10(sec)

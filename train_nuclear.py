@@ -7,70 +7,81 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler, RobustScaler
 from argparse import Namespace
 from log import Logger
 import shutil, tqdm
+import wandb
 
-# --------------------------------------------- DATA
-args = Namespace(
+# Hyperparameters
+hps = Namespace(
+    num_epochs=3000,
+    learning_rate=1e-3,
+    weight_decay=1e-1,
+    train_frac=0.05,
+    batch_size=4,
+    hidden_dim=64,
+    num_layers=2,
     TARGETS_CLASSIFICATION=
     # {"stability": 1, "parity": 1, "spin": 1, "isospin": 1},
     {},
-    TARGETS_REGRESSION=
-    {
+    TARGETS_REGRESSION={
         "z": 1,
         "n": 1,
-        "binding_energy": 1,
+        "binding": 1,
         "radius": 1,
         "sum_zn": 1,
-        "diff_zn": 1,
-        "n_mod_2": 1,
-        "z_mod_2": 1,
-        "sum_mod_2": 1,
-    #     "half_life_sec": 1,
-    #     "abundance": 1,
-    #     "qa": 1,
-    #     "qbm": 1,
-    #     "qbm_n": 1,
-    #     "qec": 1,
-    #     "sn": 1,
-    #     "sp": 1,
+        # "diff_zn": 1,
+        # "n_mod_2": 1,
+        # "z_mod_2": 1,
+        # "sum_mod_2": 1,
+        #     "half_life_sec": 1,
+        #     "abundance": 1,
+        #     "qa": 1,
+        #     "qbm": 1,
+        #     "qbm_n": 1,
+        #     "qec": 1,
+        #     "sn": 1,
+        #     "sp": 1,
     },
-    DEV="cpu",
+    DEV=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
 )
+WANDB = True
+if WANDB:
+    run = wandb.init(
+        project="ai-nuclear-simple",
+        config=hps,
+        group="new-age-task-embs",
+        notes="test-run",
+        tags=["test-run"]
+        )
 
-# Hyperparameters
-num_epochs = 3000
-learning_rate = 1e-4
-weight_decay = 1e-1
-
-train_frac = 0.1
-batch_size = 4
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-data = prepare_nuclear_data(args, scaler=MinMaxScaler())
-tasks = list(args.TARGETS_REGRESSION.keys())
-num_tasks = len(args.TARGETS_REGRESSION)
-P = data.X.max() + 1
+data = prepare_nuclear_data(hps, scaler=MinMaxScaler())
+tasks = list(hps.TARGETS_REGRESSION.keys())
+num_tasks = len(hps.TARGETS_REGRESSION)
+Z, N = data.X.amax(0) + 1
+P = Z + N
 X = torch.vstack(
-    [torch.cat((x, torch.tensor([i]))) for x in data.X for i in range(P, P + num_tasks)]
+    [
+        torch.tensor([x[0], x[1] + Z, i])
+        for x in data.X
+        for i in range(P, P + num_tasks)
+    ]
 )
 y = data.y.flatten()
 na_mask = torch.isnan(y)
 X = X[~na_mask]
 y = y[~na_mask].view(-1, 1)
 shuffle = torch.randperm(len(X))
-train_idx = int(len(X) * train_frac)
+train_idx = int(len(X) * hps.train_frac)
 
 X_train, y_train = (
-    X[shuffle[: train_idx]],
-    y[shuffle[: train_idx]],
+    X[shuffle[:train_idx]],
+    y[shuffle[:train_idx]],
 )
 X_val, y_val = (
-    X[shuffle[train_idx: train_idx * 2]],
-    y[shuffle[train_idx: train_idx * 2]],
+    X[shuffle[train_idx : train_idx * 2]],
+    y[shuffle[train_idx : train_idx * 2]],
 )
-X_train, y_train = X_train.to(device), y_train.to(device)
-X_val, y_val = X_val.to(device), y_val.to(device)
+X_train, y_train = X_train.to(hps.DEV), y_train.to(hps.DEV)
+X_val, y_val = X_val.to(hps.DEV), y_val.to(hps.DEV)
 
-# %%
 # --------------------------------------------- MODEL
 class Model(nn.Module):
     def __init__(self, num_tasks, hidden_dim=64, num_layers=2):
@@ -106,28 +117,28 @@ class ResidualBlock(nn.Module):
         return self.nonlinear(x) + x
 
 
-# %% RUN
-if __name__ == "__main__":
+def start_run():
     torch.manual_seed(2)
     log = True
     name = f"nuclear"
     metrics = ["epoch", "train_loss", "val_loss"]
-    metrics.extend([f"{target}_train_loss" for target in args.TARGETS_REGRESSION])
-    metrics.extend([f"{target}_val_loss" for target in args.TARGETS_REGRESSION])
+    metrics.extend([f"{target}_train_loss" for target in hps.TARGETS_REGRESSION])
+    metrics.extend([f"{target}_val_loss" for target in hps.TARGETS_REGRESSION])
     logger = Logger(name, metrics) if log else None
     if log:
         shutil.copy(__file__, logger.root)
 
     # Data
     loader = DataLoader(
-        TensorDataset(X_train, y_train), batch_size=batch_size, shuffle=True
+        TensorDataset(X_train, y_train), batch_size=hps.batch_size, shuffle=True
     )
-    model = Model(num_tasks=num_tasks); model.to(device)
+    model = Model(num_tasks=num_tasks)
+    model.to(hps.DEV)
     optimizer = torch.optim.AdamW(
-        model.parameters(), lr=learning_rate, weight_decay=weight_decay
+        model.parameters(), lr=hps.learning_rate, weight_decay=hps.weight_decay
     )
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, num_epochs * len(loader)
+        optimizer, hps.num_epochs * len(loader)
     )
     criterion = nn.MSELoss()
 
@@ -140,13 +151,21 @@ if __name__ == "__main__":
         return losses
 
     # Train
-
-    title = "Train Loss | Val Loss"
-    title += " | Subtasks:  " + " | ".join(tasks)
+    title = "Sub " + " | ".join(f"{task:^8}" for task in tasks)
     print(title)
-    pbar_train = tqdm.trange(num_epochs, leave=True, position=1, bar_format="{l_bar}")
-    pbar_val = tqdm.trange(num_epochs, leave=True, position=0, bar_format="{l_bar}")
-    pbar = tqdm.trange(num_epochs, leave=True, position=3, bar_format="{l_bar}{bar:20}{r_bar}")
+    pbar_train = tqdm.trange(
+        hps.num_epochs, leave=True, position=1, bar_format="{l_bar}", dynamic_ncols=True
+    )
+    pbar_val = tqdm.trange(
+        hps.num_epochs, leave=True, position=0, bar_format="{l_bar}", dynamic_ncols=True
+    )
+    pbar = tqdm.trange(
+        hps.num_epochs,
+        leave=True,
+        position=3,
+        bar_format="{l_bar}{bar:20}{r_bar}",
+        dynamic_ncols=True,
+    )
     for epoch in pbar:
         for x, y in loader:
             optimizer.zero_grad()
@@ -164,27 +183,64 @@ if __name__ == "__main__":
             val_loss = criterion(y_pred, y_val)
             val_losses = loss_by_function(y_pred, y_val, X_val)
 
-        msg = f"{loss:10.2e} | {val_loss:>8.2e}"
+        msg = f"Trn Loss {loss:<8.2e} | Val Loss {val_loss:<8.2e}"
         pbar.set_description_str(msg)
-        pbar_train.set_description_str("TRAIN " + " | ".join([f"{l:8.2e}" for l in train_losses]))
-        pbar_val.set_description_str("VAL " + " | ".join([f"{l:8.2e}" for l in val_losses]))
+        pbar_train.set_description_str(
+            "Trn " + " | ".join([f"{l:<8.2e}" for l in train_losses])
+        )
+        pbar_val.set_description_str(
+            "Val " + " | ".join([f"{l:<8.2e}" for l in val_losses])
+        )
 
         if log:
             logger.log(
                 model=None,
-                epoch=epoch,
-                train_loss=loss,
-                val_loss=val_loss,
-                **{
-                    f"{target}_train_loss": train_losses[i]
-                    for i, target in enumerate(tasks)
-                },
-                **{
-                    f"{target}_val_loss": val_losses[i]
-                    for i, target in enumerate(tasks)
-                },
+                **(
+                    metrics_dict := {
+                        "epoch": epoch,
+                        "train_loss": loss,
+                        "val_loss": val_loss,
+                        **{
+                            f"{target}_train_loss": train_losses[i]
+                            for i, target in enumerate(tasks)
+                        },
+                        **{
+                            f"{target}_val_loss": val_losses[i]
+                            for i, target in enumerate(tasks)
+                        },
+                    }
+                ),
             )
+            if WANDB:
+                run.log(metrics_dict)
+
+    if log:
+        import os
+
+        torch.save(model.state_dict(), os.path.join(logger.root, "model.pt"))
+
+
+# %% ---------------------------- RUN
+start_run()
 # %%
-if log:
-    import os
-    torch.save(model.state_dict(), os.path.join(logger.root, "model.pt"))
+from matplotlib import pyplot as plt
+from sklearn.decomposition import PCA
+
+model = Model(num_tasks=num_tasks)
+model.load_state_dict(torch.load("logs/nuclear/model.pt"))
+from sklearn.decomposition import PCA
+import numpy as np
+
+n = 2
+pca = PCA(n_components=n)
+
+emb = model.embedding.weight.detach().cpu().numpy()
+emb = pca.fit_transform(emb)
+emb = np.hstack([emb, np.zeros_like(emb)])
+fig, ax = plt.subplots(figsize=(15, 5))
+c = plt.cm.viridis(np.linspace(0, 1, len(emb)))
+plt.scatter(emb[:, 0], emb[:, 1], c=c, s=1)
+for i, (x, y, *_) in enumerate(emb):
+    ax.annotate(f"{i}", (x, y), fontsize=10, c=c[i])
+plt.savefig(f"nuclear_embeddings{n}d.pdf")
+# %%
